@@ -21,7 +21,29 @@ export class EnvironmentVariablesService implements IEnvironmentVariablesService
         if (!fs.lstatSync(filePath).isFile()) {
             return;
         }
-        return dotenv.parse(await fs.readFile(filePath));
+        // return dotenv.parse(await fs.readFile(filePath));
+        // Manual work around parse .env to keep old value from overide env declare
+        let envsMap = new Map();
+        let lines = fs.readFileSync(filePath).toString().split(/(?:\r\n|\r|\n)/g);
+        for (const line of lines) {
+            if (line === "" || line.startsWith("#")) continue;
+            let [newKey, value] = line.split("=");
+            for (const envKey of envsMap.keys()) {
+                // Expand value of newKey with pre exist keys
+                let expandValue = envsMap.get(envKey);
+                let matchEnvInValue = "[\$%!](" + envKey + ")[\\/%!]";
+                let re = new RegExp(matchEnvInValue, "gi");
+                value = value.replace(re, expandValue);
+            }
+            if (envsMap.has(newKey)) {
+                // Remove old exist key
+                envsMap.delete(newKey);
+            }
+            envsMap.set(newKey, value);
+        };
+        const envs = {};
+        envsMap.forEach((v,k) => { envs[k] = v });
+        return envs;
     }
     public mergeVariables(source: EnvironmentVariables, target: EnvironmentVariables) {
         if (!target) {
